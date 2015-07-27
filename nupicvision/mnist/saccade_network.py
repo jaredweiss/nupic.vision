@@ -29,8 +29,10 @@ import yaml
 
 from nupic.engine import Network
 
-from nupicvision.regions.ImageSensor import ImageSensor
+from nupicvision.regions.SaccadeSensor import SaccadeSensor
 from nupicvision.image import deserializeImage
+
+from sensorimotor.TMRegion import TMRegion
 
 
 
@@ -73,6 +75,26 @@ DEFAULT_SP_PARAMS = {
     "maxBoost": 1.0
 }
 
+DEFAULT_TM_PARAMS = {
+    "columnDimensions": 0,
+#    "numberOfDistalInput": 0,
+    "cellsPerColumn": 8,
+    "initialPermanence": 0.4,
+    "connectedPermanence": 0.5,
+    "minThreshold": 45,
+    "activationThreshold": 45,
+#    "newSynapseCount": 50,
+#    "newDistalSynapseCount": 50,
+    "permanenceIncrement": 0.1,
+    "permanenceDecrement": 0.02,
+    "learnOnOneCell": 1,
+#    "learnDistalInputs": True,
+#    "learnLateralConnections": False,
+#    "globalDecay": 0,
+#    "burnIn": 1,
+#    "verbosity": 0
+}
+
 DEFAULT_CLASSIFIER_PARAMS = {
     "distThreshold": 0.000001,
     "maxCategoryCount": 10,
@@ -83,7 +105,7 @@ DEFAULT_CLASSIFIER_PARAMS = {
 class SaccadeNetwork(object):
   """
   A HTM network structured as follows:
-  ImageSensor (RandomSaccade) -> SP -> ?
+  SaccadeSensor (RandomSaccade) -> SP -> ?
   """
   def __init__(self,
                networkName,
@@ -126,7 +148,7 @@ class SaccadeNetwork(object):
     self.numTestingImages = 0
     self.trainingImageIndex = 0
     self.testingImageIndex = 0
-
+    self.numCorrect = 0
     if createNetwork:
       self.createNet()
 
@@ -134,8 +156,11 @@ class SaccadeNetwork(object):
     """ Set up the structure of the network """
     net = Network()
 
-    Network.unregisterRegion(ImageSensor.__name__)
-    Network.registerRegion(ImageSensor)
+    Network.unregisterRegion(SaccadeSensor.__name__)
+    Network.registerRegion(SaccadeSensor)
+
+    Network.unregisterRegion(TMRegion.__name__)
+    Network.registerRegion(TMRegion)
 
     imageSensorParams = copy.deepcopy(DEFAULT_IMAGESENSOR_PARAMS)
     if self.loggingDir is not None:
@@ -146,22 +171,40 @@ class SaccadeNetwork(object):
       imageSensorParams["logLocationImages"] = 1
       imageSensorParams["logLocationOnOriginalImage"] = 1
 
-    net.addRegion("sensor", "py.ImageSensor",
+    net.addRegion("sensor", "py.SaccadeSensor",
                   yaml.dump(imageSensorParams))
+    sensor = net.regions["sensor"].getSelf()
+    DEFAULT_SP_PARAMS["columnCount"] = sensor.getOutputElementCount("dataOut")
+    #import IPython; IPython.embed()
     net.addRegion("SP", "py.SPRegion", yaml.dump(DEFAULT_SP_PARAMS))
+    sp = net.regions["SP"].getSelf()
+
+    sensor.setParameter("saccadeOutSize", -1, sp.getOutputElementCount("bottomUpOut"))
+
+    #DEFAULT_TM_PARAMS["columnDimensions"] = sp.getOutputElementCount("bottomUpOut")
+    DEFAULT_TM_PARAMS["columnDimensions"] = (sp.getOutputElementCount("bottomUpOut"),)
+    net.addRegion("TM", "py.TMRegion", yaml.dump(DEFAULT_TM_PARAMS))
+
     net.addRegion("classifier","py.KNNClassifierRegion",
                   yaml.dump(DEFAULT_CLASSIFIER_PARAMS))
 
     net.link("sensor", "SP", "UniformLink", "",
              srcOutput = "dataOut", destInput = "bottomUpIn")
-    net.link("SP", "classifier", "UniformLink", "",
-             srcOutput = "bottomUpOut", destInput = "bottomUpIn")
+
+    net.link("SP", "TM", "UniformLink", "",
+             srcOutput = "bottomUpOut", destInput = "activeColumns")
+    net.link("sensor", "TM", "UniformLink", "",
+             srcOutput = "saccadeOut", destInput = "activeExternalCells")
+
+    net.link("TM", "classifier", "UniformLink", "",
+             srcOutput = "activeCells", destInput = "bottomUpIn")
     net.link("sensor", "classifier", "UniformLink", "",
              srcOutput = "categoryOut", destInput = "categoryIn")
 
     self.net = net
     self.networkSensor = self.net.regions["sensor"]
     self.networkSP = self.net.regions["SP"]
+    self.networkTM = self.net.regions["TM"]
     self.networkClassifier = self.net.regions["classifier"]
 
 
@@ -170,8 +213,12 @@ class SaccadeNetwork(object):
     :param filename: Where the network should be loaded from
     """
     print "Loading network from {file}...".format(file=filename)
-    Network.unregisterRegion(ImageSensor.__name__)
-    Network.registerRegion(ImageSensor)
+    Network.unregisterRegion(SaccadeSensor.__name__)
+    Network.registerRegion(SaccadeSensor)
+
+    Network.unregisterRegion(TMRegion.__name__)
+    Network.registerRegion(TMRegion)
+
 
     self.net = Network(filename)
 
@@ -182,6 +229,7 @@ class SaccadeNetwork(object):
     self.networkClassifier = self.net.regions["classifier"]
 
     self.setLearningMode(learningSP=False,
+                         learningTM=False,
                          learningClassifier=False)
 
     self.numCorrect = 0
@@ -544,6 +592,7 @@ class SaccadeNetwork(object):
 
   def setLearningMode(self,
                       learningSP=False,
+                      learningTM=False,
                       learningClassifier=False):
     if learningSP:
       self.networkSP.setParameter("learningMode", 1)
@@ -551,6 +600,11 @@ class SaccadeNetwork(object):
     else:
       self.networkSP.setParameter("learningMode", 0)
       self.networkSP.setParameter("inferenceMode", 1)
+
+    if learningTM:
+      self.networkTM.setParameter("learningMode", 1)
+    else:
+      self.networkTM.setParameter("learningMode", 0)
 
     if learningClassifier:
       self.networkClassifier.setParameter("learningMode", 1)
