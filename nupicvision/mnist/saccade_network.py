@@ -81,8 +81,8 @@ DEFAULT_TM_PARAMS = {
     "cellsPerColumn": 8,
     "initialPermanence": 0.4,
     "connectedPermanence": 0.5,
-    "minThreshold": 45,
-    "activationThreshold": 45,
+    "minThreshold": 20,
+    "activationThreshold": 20,
 #    "newSynapseCount": 50,
 #    "newDistalSynapseCount": 50,
     "permanenceIncrement": 0.1,
@@ -151,6 +151,7 @@ class SaccadeNetwork(object):
     self.numCorrect = 0
     if createNetwork:
       self.createNet()
+    self.debug = False
 
   def createNet(self):
     """ Set up the structure of the network """
@@ -196,8 +197,11 @@ class SaccadeNetwork(object):
     net.link("sensor", "TM", "UniformLink", "",
              srcOutput = "saccadeOut", destInput = "activeExternalCells")
 
+
+
     net.link("TM", "classifier", "UniformLink", "",
-             srcOutput = "activeCells", destInput = "bottomUpIn")
+             #srcOutput = "activeCells", destInput = "bottomUpIn")
+             srcOutput = "predictedActiveCells", destInput = "bottomUpIn")
     net.link("sensor", "classifier", "UniformLink", "",
              srcOutput = "categoryOut", destInput = "categoryIn")
 
@@ -228,10 +232,6 @@ class SaccadeNetwork(object):
     self.networkSP = self.net.regions["SP"]
     self.networkClassifier = self.net.regions["classifier"]
 
-    self.setLearningMode(learningSP=False,
-                         learningTM=False,
-                         learningClassifier=False)
-
     self.numCorrect = 0
 
   def loadExperiment(self):
@@ -245,12 +245,6 @@ class SaccadeNetwork(object):
     print "Load time for training images:", t2-t1
     print "Number of training images", numTrainingImages
 
-    # Set up the SP parameters
-    print "============= SP training ================="
-    self.networkClassifier.setParameter("inferenceMode", 0)
-    self.networkClassifier.setParameter("learningMode", 0)
-    self.networkSP.setParameter("learningMode", 1)
-    self.networkSP.setParameter("inferenceMode", 0)
     self.numTrainingImages = numTrainingImages
     self.trainingImageIndex = 0
 
@@ -274,6 +268,9 @@ class SaccadeNetwork(object):
       saccadeHistList = []
       saccadeDetailList = []
       originalImage = None
+
+      self.networkTM.executeCommand(["reset"])
+
       for i in range(SACCADES_PER_IMAGE_TRAINING):
         self.net.run(1)
         if originalImage is None:
@@ -369,10 +366,14 @@ class SaccadeNetwork(object):
                                            Image.ANTIALIAS)
           saccadeHistList.append(ImageTk.PhotoImage(saccadeHist))
 
+      self.trainingImageIndex += 1
+
+      if self.debug:
+        self.networkTM.executeCommand(["debugPlot", "{iter}".format(iter=self.trainingImageIndex)])
+
       print ("Iteration: {iter}; Category: {cat}"
              .format(iter=self.trainingImageIndex,
                      cat=self.networkSensor.getOutputData("categoryOut")))
-      self.trainingImageIndex += 1
 
       if enableViz:
         return (saccadeImgsList, saccadeDetailList, saccadeHistList,
@@ -383,19 +384,6 @@ class SaccadeNetwork(object):
       return False
 
 
-  def run(self):
-    """ Run the network until all images have been seen """
-    while self.trainingImageIndex < self.numTrainingImages:
-      for i in range(SACCADES_PER_IMAGE_TRAINING):
-        self.net.run(1)
-
-      if self.trainingImageIndex % (self.numTrainingImages/100) == 0:
-        print ("Iteration: {iter}; Category: {cat}"
-               .format(iter=self.trainingImageIndex,
-                       cat=self.networkSensor.getOutputData("categoryOut")))
-      self.trainingImageIndex += 1
-
-
   def runNetworkBatch(self, batchSize):
     """ Run the network in batches.
 
@@ -404,8 +392,13 @@ class SaccadeNetwork(object):
       Otherwise False.
     """
     while self.trainingImageIndex < self.numTrainingImages:
+      self.networkTM.executeCommand(["reset"])
       for i in range(SACCADES_PER_IMAGE_TRAINING):
         self.net.run(1)
+
+
+      if self.debug:
+        self.networkTM.executeCommand(["debugPlot", "{iter}".format(iter=self.trainingImageIndex)])
 
       self.trainingImageIndex += 1
       if self.trainingImageIndex % batchSize == 0:
@@ -420,6 +413,8 @@ class SaccadeNetwork(object):
     self.numTestingImages = self.networkSensor.getParameter("numImages")
     self.testingImageIndex = 0
 
+    #self.debug = True
+
     print "NumTestingImages {test}".format(test=self.numTestingImages)
 
 
@@ -431,7 +426,7 @@ class SaccadeNetwork(object):
       saccadeDetailList = []
       inferredCategoryList = []
       originalImage = None
-
+      self.networkTM.executeCommand(["reset"])
       for i in range(SACCADES_PER_IMAGE_TESTING):
         self.net.run(1)
         if originalImage is None:
@@ -529,6 +524,10 @@ class SaccadeNetwork(object):
                                            Image.ANTIALIAS)
           saccadeHistList.append(ImageTk.PhotoImage(saccadeHist))
 
+      if self.debug:
+        self.networkTM.executeCommand(["debugPlot", "t{iter}".format(iter=self.trainingImageIndex)])
+
+
       inferredCategory = self.getMostCommonCategory(inferredCategoryList)
       isCorrectClassification = False
       if self.networkSensor.getOutputData("categoryOut") == inferredCategory:
@@ -556,10 +555,16 @@ class SaccadeNetwork(object):
 
     while self.testingImageIndex < self.numTestingImages:
       inferredCategoryList = []
+      self.networkTM.executeCommand(["reset"])
       for i in range(SACCADES_PER_IMAGE_TESTING):
         self.net.run(1)
         inferredCategoryList.append(
             self.networkClassifier.getOutputData("categoriesOut").argmax())
+
+      if self.debug:
+        self.networkTM.executeCommand(["debugPlot", "t{iter}".format(iter=self.trainingImageIndex)])
+
+
       inferredCategory = self.getMostCommonCategory(inferredCategoryList)
       if self.networkSensor.getOutputData("categoryOut") == inferredCategory:
         self.numCorrect += 1
@@ -602,11 +607,13 @@ class SaccadeNetwork(object):
       self.networkSP.setParameter("inferenceMode", 1)
 
     if learningTM:
+      #self.debug = True
       self.networkTM.setParameter("learningMode", 1)
     else:
       self.networkTM.setParameter("learningMode", 0)
 
     if learningClassifier:
+      #self.debug = True
       self.networkClassifier.setParameter("learningMode", 1)
       self.networkClassifier.setParameter("inferenceMode", 0)
     else:
