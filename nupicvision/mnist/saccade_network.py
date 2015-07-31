@@ -63,7 +63,7 @@ DEFAULT_IMAGESENSOR_PARAMS = {
 DEFAULT_SP_PARAMS = {
     "columnCount": 4096,
     "spatialImp": "cpp",
-    "inputWidth": 768,
+    "inputWidth": 784,
     "spVerbosity": 1,
     "synPermConnected": 0.2,
     "synPermActiveInc": 0.0,

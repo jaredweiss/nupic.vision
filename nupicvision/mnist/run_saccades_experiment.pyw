@@ -501,7 +501,7 @@ class MainGUI(object):
     :param queue: The queue to send results to
     :param process: The name of the process. Used in sending results to queue
     """
-    result = network.runNetworkBatch(batchSize=10)
+    result = network.runNetworkBatch(batchSize=1)
     queue.put({"process": process,
                "running": result})
 
@@ -556,7 +556,7 @@ class MainGUI(object):
 
   @staticmethod
   def testNetworkBatch(network, queue, process=""):
-    result = network.testNetworkBatch(batchSize=10)
+    result = network.testNetworkBatch(batchSize=1)
     if result is not False:
       queue.put({"process": process,
                  "running": True})
@@ -626,10 +626,13 @@ class MainGUI(object):
       # CLASSIFIER
       elif (msg["process"] == "CLAS" and
             msg["running"] == False):
-        self.trainingNetwork.saveNetwork()
+        #self.trainingNetwork.saveNetwork()
         self.progressbarRunning.stop()
         self.progressbarLearning.stop()
         self.buttonLoadTesting.config(state=Tk.NORMAL)
+        #self.buttonLoadTestingCb()
+        #self.buttonRunTestingCb()
+
       elif (msg["process"] == "CLAS" and
             msg["running"] == True):
         self.progressbarLearning.step()
@@ -680,8 +683,8 @@ if __name__ == "__main__":
   MainGUI(root,
           loggingDir=None,
           networkName=netName,
-          trainingSet="mnist/supersmall_training",
-          testingSet="mnist/testing")
+          trainingSet="mnist/supersupersuper",
+          testingSet="mnist/small_testing01")
   root.mainloop()
 
   exit()
