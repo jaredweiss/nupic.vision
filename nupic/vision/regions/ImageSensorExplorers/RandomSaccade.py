@@ -116,9 +116,16 @@ class RandomSaccade(BaseExplorer):
 
     while True:
       if self.saccadeIndex is 0 or self.saccadeIndex > (self.numSaccades - 1):
-        while self.position["image"] in self.imageHistory:
+
+        if True: # RANDOM
+          while self.position["image"] in self.imageHistory:
+            BaseExplorer.first(self)
+            self.position["image"] = self.pickRandomImage(self.random)
+        else:
           BaseExplorer.first(self)
-          self.position["image"] = self.pickRandomImage(self.random)
+          while self.position["image"] in self.imageHistory:
+            self.position["image"] += 1
+
         self.imageHistory.append(self.position["image"])
         self.prevSaccade = {"prevOffset": deepcopy(self.position["offset"]),
                             "direction": None,

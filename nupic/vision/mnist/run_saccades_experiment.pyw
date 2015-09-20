@@ -582,10 +582,15 @@ class MainGUI(object):
         self.progressbarRunning.stop()
         self.progressbarLearning.stop()
         # TM
+
+        self.trainingNetwork.networkSensor.executeCommand(["loadMultipleImages", "mnist/supersmall_training"])
+        self.trainingNetwork.numTrainingImages = self.trainingNetwork.networkSensor.getParameter("numImages")
+
         self.trainingNetwork.setLearningMode(learningSP=False,
                                              learningTM=True,
                                              learningClassifier=False)
         self.trainingNetwork.resetIndex()
+        self.trainingNetwork.addTMLayer()
         threading.Thread(target=self.runNetworkBatch,
                          kwargs={"network": self.trainingNetwork,
                                  "queue": self.eventQueue,
@@ -602,7 +607,7 @@ class MainGUI(object):
 
       # TM
       elif (msg["process"] == "TM" and
-          msg["running"] == False):
+            msg["running"] == False):
         print "TM learning is done!"
         self.progressbarRunning.stop()
         self.progressbarLearning.stop()
@@ -682,8 +687,9 @@ if __name__ == "__main__":
   MainGUI(root,
           loggingDir=None,
           networkName=netName,
-          trainingSet="mnist/supersmall_training",
-          testingSet="mnist/testing")
+          #trainingSet="mnist/small_training",
+          trainingSet="mnist/small_training",
+          testingSet="mnist/supersmall_training")
   root.mainloop()
 
   exit()
